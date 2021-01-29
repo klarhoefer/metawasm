@@ -15,16 +15,17 @@ type Circle = {
 class Circles {
     circles: Circle[] = [];
 
-    constructor(count: number, width: number, height: number, minRadius: number, maxRadius: number) {
-        let diffRadius = maxRadius - maxRadius;
+    constructor(count: number, private width: number, private height: number, minRadius: number, maxRadius: number) {
+        let diffRadius = maxRadius - minRadius;
         for (let i = 0; i < count; ++i) {
-            this.circles.push({
+            let circle = {
                 x: Math.random() * width,
                 y: Math.random() * height,
                 r: minRadius + Math.random() * diffRadius,
                 dx: Math.random() * 2 - 1,
                 dy: Math.random() * 2 - 1
-            });
+            };
+            this.circles.push(circle);
         }
     }
 
@@ -32,17 +33,18 @@ class Circles {
         for (let circle of this.circles) {
             circle.x += circle.dx;
             circle.y += circle.dy;
-            if (circle.x < 0 || circle.x > app.width) {
+            if (circle.x < 0 || circle.x > this.width) {
                 circle.dx = -circle.dx;
                 circle.x += circle.dx;
             }
-            if (circle.y < 0 || circle.y > app.height) {
+            if (circle.y < 0 || circle.y > this.height) {
                 circle.dy = -circle.dy;
                 circle.y += circle.dy;
             }
         }
     }
 }
+
 
 class App {
     handle: number;
@@ -105,6 +107,7 @@ class App {
     }
 }
 
+
 let app: App;
 let circles: Circles;
 
@@ -133,7 +136,7 @@ async function loadApp() {
 loadApp().then(exp => {
     let cnvs = document.getElementById('meatballs') as HTMLCanvasElement;
     app = new App(exp, cnvs);
-    circles = new Circles(12, app.width, app.height, 32, 64);
+    circles = new Circles(12, app.width, app.height, 20, 80);
 
     loop();
 });
