@@ -1,20 +1,8 @@
 
 type FnInit = (w: number, h: number) => number;
-type FnTerm = (app: number) => void;
+type FnVoid = (app: number) => void;
 type FnAddr = (app: number) => number;
-type FnDraw = (app: number) => void;
-type FnAdd = (app: number, x: number, y: number, r: number) => void;
-type FnClear = (app: number) => void;
-
-interface Exp {
-    mem: WebAssembly.Memory,
-    init: FnInit,
-    term: FnTerm,
-    addr: FnAddr,
-    clear_circles: FnClear,
-    add_circle: FnAdd,
-    draw: FnDraw,
-}
+type FnCircle = (app: number, x: number, y: number, r: number) => void;
 
 type Circle = {
     x: number,
@@ -24,63 +12,112 @@ type Circle = {
     dy: number,
 }
 
-const BytesPerPixel = 4;
+class Circles {
+    circles: Circle[] = [];
 
-let cnvs = document.getElementById('meatballs') as HTMLCanvasElement;
-let ctx = cnvs.getContext('2d');
+    constructor(count: number, width: number, height: number, minRadius: number, maxRadius: number) {
+        let diffRadius = maxRadius - maxRadius;
+        for (let i = 0; i < count; ++i) {
+            this.circles.push({
+                x: Math.random() * width,
+                y: Math.random() * height,
+                r: minRadius + Math.random() * diffRadius,
+                dx: Math.random() * 2 - 1,
+                dy: Math.random() * 2 - 1
+            });
+        }
+    }
+
+    update() {
+        for (let circle of this.circles) {
+            circle.x += circle.dx;
+            circle.y += circle.dy;
+            if (circle.x < 0 || circle.x > app.width) {
+                circle.dx = -circle.dx;
+                circle.x += circle.dx;
+            }
+            if (circle.y < 0 || circle.y > app.height) {
+                circle.dy = -circle.dy;
+                circle.y += circle.dy;
+            }
+        }
+    }
+}
 
 class App {
-    ptr: number;
+    handle: number;
+    mem: WebAssembly.Memory;
+    init: FnInit;
+    term: FnVoid;
+    addr: FnAddr;
+    draw: FnVoid;
+    clear_circles: FnVoid;
+    add_circle: FnCircle;
+
     img: ImageData;
+    cnvs: HTMLCanvasElement;
+    ctx: CanvasRenderingContext2D;
+
     decoder: TextDecoder;
 
-    constructor(private exp: Exp) {
-        let ptr = exp.init(cnvs.width, cnvs.height);
-        let addr = exp.addr(ptr);
-        this.ptr = ptr;
+    get width() {
+        return this.cnvs.width;
+    }
+
+    get height() {
+        return this.cnvs.height;
+    }
+
+    constructor(exp: Record<string, WebAssembly.ExportValue>, cnvs: HTMLCanvasElement) {
+        this.mem = exp.memory as WebAssembly.Memory;
+
+        this.init = exp.metaballs_init as FnInit;
+        this.term = exp.metaballs_term as FnVoid;
+        this.addr = exp.metaballs_addr as FnAddr;
+        this.clear_circles = exp.metaballs_clear_circles as FnVoid;
+        this.add_circle = exp.metaballs_add_circle as FnCircle;
+        this.draw = exp.metaballs_draw as FnVoid;
+
         this.decoder = new TextDecoder();
 
-        let buffer = new Uint8ClampedArray(exp.mem.buffer, addr, cnvs.width * cnvs.height * BytesPerPixel);
+        this.cnvs = cnvs;
+        this.ctx = cnvs.getContext('2d')!;
+
+        this.handle = this.init(cnvs.width, cnvs.height);
+
+        let addr = this.addr(this.handle);
+        const BytesPerPixel = 4;
+        let buffer = new Uint8ClampedArray(this.mem.buffer, addr, cnvs.width * cnvs.height * BytesPerPixel);
         this.img = new ImageData(buffer, cnvs.width, cnvs.height);
     }
 
-    draw(circles: Circle[]) {
-        this.exp.clear_circles(this.ptr);
-        for (let circle of circles)
-            this.exp.add_circle(this.ptr, circle.x, circle.y, circle.r);
-        this.exp.draw(this.ptr);
+    paint(circles: Circles) {
+        this.clear_circles(this.handle);
+        for (let { x, y, r} of circles.circles)
+            this.add_circle(this.handle, x, y, r);
+        this.draw(this.handle);
+        this.ctx.putImageData(this.img, 0, 0);
     }
 
     buffer2text(offset: number, len: number): string {
-        let array = new Uint8Array(this.exp.mem.buffer, offset, len);
+        let array = new Uint8Array(this.mem.buffer, offset, len);
         return this.decoder.decode(array);
     }
 }
 
 let app: App;
-let circles: Circle[] = [];
+let circles: Circles;
 
 function loop() {
-    for (let circle of circles) {
-        circle.x += circle.dx;
-        circle.y += circle.dy;
-        if (circle.x < 0 || circle.x > cnvs.width) {
-            circle.dx = -circle.dx;
-            circle.x += circle.dx;
-        }
-        if (circle.y < 0 || circle.y > cnvs.height) {
-            circle.dy = -circle.dy;
-            circle.y += circle.dy;
-        }
-    }
-
-    app.draw(circles);
-    ctx!.putImageData(app.img, 0, 0);
-
+    circles.update();
+    
+    app.paint(circles);
+    
     requestAnimationFrame(loop);
 }
 
-async function loadExp() {
+
+async function loadApp() {
     let resp = await fetch("metaballs.wasm");
     let buffer = await resp.arrayBuffer();
     let imp = {
@@ -89,27 +126,14 @@ async function loadExp() {
         }
     };
     let mod = await WebAssembly.instantiate(buffer, imp);
-    let inst = mod.instance;
-    let exp = {
-        mem: inst.exports.memory as WebAssembly.Memory,
-        init: inst.exports.metaballs_init as FnInit,
-        term: inst.exports.metaballs_term as FnTerm,
-        addr: inst.exports.metaballs_addr as FnAddr,
-        clear_circles: inst.exports.metaballs_clear_circles as FnClear,
-        add_circle: inst.exports.metaballs_add_circle as FnAddr,
-        draw: inst.exports.metaballs_draw as FnDraw,
-    };
-    return exp as Exp;
+    return mod.instance.exports;
 }
 
-loadExp().then(exp => {
-    for (let i = 0; i < 12; ++i) {
-        circles.push({x: Math.random() * cnvs.width, y: Math.random() * cnvs.height,
-            r: 20 + Math.random() * 40,
-            dx: Math.random() * 2 - 1, dy: Math.random() * 2 - 1});
-    }
 
-    app = new App(exp);
+loadApp().then(exp => {
+    let cnvs = document.getElementById('meatballs') as HTMLCanvasElement;
+    app = new App(exp, cnvs);
+    circles = new Circles(12, app.width, app.height, 32, 64);
 
     loop();
 });
