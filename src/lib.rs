@@ -25,6 +25,18 @@ pub extern fn metaballs_addr(app: *mut MetaBalls) -> *const u32 {
 }
 
 #[no_mangle]
+pub extern fn metaballs_clear_circles(app: *mut MetaBalls) {
+    let app = unsafe { &mut *app };
+    app.clear_circles();
+}
+
+#[no_mangle]
+pub extern fn metaballs_add_circle(app: *mut MetaBalls, x: f32, y: f32, r: f32) {
+    let app = unsafe { &mut *app };
+    app.add_circle(x, y, r);
+}
+
+#[no_mangle]
 pub extern fn metaballs_draw(app: *mut MetaBalls) {
     let app = unsafe { &mut *app };
     app.draw();
