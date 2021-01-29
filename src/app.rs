@@ -26,13 +26,12 @@ fn calc_color(x: usize, y: usize, circles: &[Circle]) -> u32 {
 
     for circle in circles {
         res += circle.calc(x, y);
+        if res > 1.0_f32 {
+            return 0xff444444;
+        }
     }
 
-    if res > 1.0_f32 {
-        0xff444444
-    } else {
-        0xffeeeeee
-    }
+    0xffeeeeee
 }
 
 pub struct MetaBalls {
